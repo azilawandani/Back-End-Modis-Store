@@ -1,28 +1,41 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+require('dotenv').config();
+
+// Import Routes
 const authRoutes = require('./routes/auth');
 const orderRoutes = require('./routes/order');
-
-require('dotenv').config();
+const productRoutes = require('./routes/product');
 
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json()); // Agar server bisa membaca data format JSON
-app.use('/api/orders', orderRoutes);
-// Koneksi ke MongoDB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ Terhubung ke MongoDB Atlas'))
-  .catch((err) => console.error('❌ Gagal koneksi ke MongoDB:', err));
+// --- 1. MIDDLEWARE ---
+app.use(cors()); // Mengizinkan koneksi antar frontend & backend
+app.use(express.json()); // Agar bisa membaca data JSON dari body request
 
-// Route Testing
+// --- 2. ROUTES ---
+// Daftarkan semua endpoint API di sini
+app.use('/api/auth', authRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/products', productRoutes);
+
+// Route Testing untuk memastikan server jalan
 app.get('/', (req, res) => {
   res.send('API Modis Store Berjalan...');
 });
-app.use('/api/auth', authRoutes);
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server aktif di http://localhost:${PORT}`);
-});
+
+// --- 3. KONEKSI DATABASE ---
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log('✅ Terhubung ke MongoDB Atlas');
+    
+    // Jalankan Server setelah database terkoneksi
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => {
+      console.log(`🚀 Server aktif di http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('❌ Gagal koneksi ke MongoDB:', err);
+  });
