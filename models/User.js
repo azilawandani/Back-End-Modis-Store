@@ -11,8 +11,8 @@ const UserSchema = new mongoose.Schema({
   phone: { type: String, default: "" },
   province: { type: String, default: "" },
   city: { type: String, default: "" },
-  district: { type: String, default: "" },   // Field tambahan baru
-  postalCode: { type: String, default: "" }, // Field tambahan baru
+  district: { type: String, default: "" },   
+  postalCode: { type: String, default: "" }, 
   
   // Field address ini akan kita gunakan sebagai 'Alamat Lengkap'
   address: { type: String, default: "" },
@@ -28,12 +28,13 @@ const UserSchema = new mongoose.Schema({
     beratBadan: { type: Number, default: 0 },
     rekomendasiUkuran: { type: String, default: "" },
     
-    // Warna Favorit
+    // FIELD BARU: Agar LD & PP tersimpan permanen di Database
+    estimasiLD: { type: Number, default: 0 }, 
+    estimasiPP: { type: Number, default: 0 },
+    
     warnaFavorit: { type: String, default: "" }, 
-    
-    // Field Bahan yang ditambahkan
     favBahan: { type: String, default: "" }, 
-    
+    kategoriFavorit: { type: String, default: "" }, 
     gayaPakaian: { type: String, default: "" },    
     motifDisukai: { type: String, default: "" }    
   }

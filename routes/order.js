@@ -1,21 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
+const Product = require('../models/Product');
 
 // -----------------------------------------------------------
 // 1. MEMBUAT PESANAN BARU (Checkout)
 // -----------------------------------------------------------
 router.post('/checkout', async (req, res) => {
   try {
-    // Pastikan namaPelanggan dikirim dari Frontend (CheckoutPage)
-    const { userId, namaPelanggan, items, totalHarga, ongkir, alamatPengiriman } = req.body;
+    const { userId, namaPelanggan, items, totalHarga, ongkir, alamatPengiriman, noResi } = req.body;
     
+    // Validasi Dasar
+    if (!items || items.length === 0) {
+      return res.status(400).json({ message: "Item pesanan tidak boleh kosong" });
+    }
+
     const newOrder = new Order({
       userId,
-      namaPelanggan, // Simpan nama asli pelanggan
+      namaPelanggan, 
       items,
       totalHarga,
       ongkir,
+      noResi: noResi || "",
       alamatPengiriman,
       status: 'Pending',
       trackingHistory: [
@@ -28,10 +34,28 @@ router.post('/checkout', async (req, res) => {
     });
 
     const savedOrder = await newOrder.save();
-    res.status(201).json({ message: "Pesanan berhasil dibuat!", order: savedOrder });
+
+    // PROSES UPDATE STOK
+    const updateStockPromises = items.map(item => {
+      // Pastikan quantity adalah angka dan tidak undefined
+      const qtyToReduce = Number(item.quantity) || 0;
+      
+      return Product.findByIdAndUpdate(
+        item.productId,
+        { $inc: { stock: -qtyToReduce } }, 
+        { new: true }
+      );
+    });
+
+    await Promise.all(updateStockPromises);
+
+    res.status(201).json({ 
+      message: "Pesanan berhasil dibuat dan stok diperbarui!", 
+      order: savedOrder 
+    });
   } catch (err) {
     console.error("Backend Order Error:", err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Gagal memproses pesanan: " + err.message });
   }
 });
 
@@ -40,7 +64,9 @@ router.post('/checkout', async (req, res) => {
 // -----------------------------------------------------------
 router.get('/all', async (req, res) => {
   try {
-    const orders = await Order.find().sort({ createdAt: -1 });
+    const orders = await Order.find()
+      .populate('userId', 'email phone') 
+      .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -98,14 +124,14 @@ router.put('/update-status/:id', async (req, res) => {
 router.delete('/delete-all', async (req, res) => {
   try {
     await Order.deleteMany({});
-    res.status(200).json({ message: "Semua data transaksi berhasil dihapus! Dashboard akan kembali ke 0." });
+    res.status(200).json({ message: "Semua data transaksi berhasil dihapus!" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
 // -----------------------------------------------------------
-// 7. KONFIRMASI PESANAN SELESAI (USER) - TAMBAHKAN INI
+// 7. KONFIRMASI PESANAN SELESAI (USER)
 // -----------------------------------------------------------
 router.put('/confirm-finish/:id', async (req, res) => {
   try {

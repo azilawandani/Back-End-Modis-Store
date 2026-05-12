@@ -8,12 +8,17 @@ const ProductSchema = new mongoose.Schema({
   description: { type: String }, 
   img: { type: String, required: true },
   stock: { type: Number, default: 10 },
+  // PERBAIKAN: Menggunakan 'image' bukan 'code' agar sesuai dengan data dari Dashboard
   colors: [{ 
     name: { type: String }, 
-    code: { type: String } 
+    image: { type: String } 
   }],
-  sizes: [String], // Menyimpan "S", "M", "L", "XL", atau "All Size" dari Excel
-  // Features: [0]=Bahan, [1]=Gaya, [2]=Motif (Pattern/Polos)
+  // PERBAIKAN: Menyimpan detail LD dan PP (Sudah Benar)
+  sizes: [{
+    label: { type: String }, // "M", "L", "XL", "All Size"
+    ld: { type: Number },    
+    pp: { type: Number }     
+  }],
   features: [String] 
 }, { timestamps: true });
 

@@ -1,98 +1,137 @@
 const User = require('../models/User');
 
 /**
- * Fungsi Helper Hitung Ukuran
- * Logika Azila: < 45kg = S, 45-54kg = M, 55-64kg = L, >= 65kg = XL
+ * FUNGSI HELPER: LOGIKA REKOMENDASI UKURAN & DETAIL FISIK
+ * Berdasarkan hasil rekayasa kebutuhan Modis Store (Integrasi TB & BB)
+ * Menghasilkan Label Ukuran, Estimasi LD, dan Estimasi PP
  */
-const hitungRekomendasiUkuran = (tb, bb) => {
-    const berat = Number(bb);
-    if (!berat) return ""; 
+const hitungDetailFisik = (tb, bb) => {
+  const tinggi = Number(tb);
+  const berat = Number(bb);
 
-    if (berat < 45) return "S";
-    if (berat >= 45 && berat < 55) return "M";
-    if (berat >= 55 && berat < 65) return "L";
-    if (berat >= 65) return "XL";
-    return "All Size";
+  if (!tinggi || !berat || tinggi <= 0 || berat <= 0) {
+    return { label: "Input Tidak Valid", ld: 0, pp: 0 };
+  }
+
+  // Logika estimasi LD & PP sesuai standar Modis Store
+  let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 15);
+  let estPP = Math.round(tinggi * 0.45);
+
+  let label = "All Size";
+ if ((berat >= 50 && berat < 60) || (tinggi >= 155 && tinggi < 165)) {
+    label = "M";
+  } else if ((berat >= 60 && berat < 75) || (tinggi >= 165 && tinggi < 175)) {
+    label = "L";
+  } else if (berat >= 75 || tinggi >= 175) {
+    label = "XL";
+  }
+  
+  return { label, ld: estLD, pp: estPP };
 };
 
-// 1. FUNGSI UPDATE PROFILING (Agar data tersimpan permanen ke MongoDB)
+/**
+ * 1. FUNGSI UPDATE PROFILING & ALAMAT
+ * Digunakan saat user klik 'Simpan Perubahan' di halaman Profile.jsx
+ */
 exports.updateProfiling = async (req, res) => {
     try {
-        const userId = req.user.id; 
+        // Mengambil ID dari params atau dari middleware auth
+        const userId = req.params.id || req.user.id; 
+        
         const { 
-            nama, phone, province, city, address, location,
+            nama, phone, province, city, district, postalCode, address, location,
             tinggiBadan, beratBadan, 
-            warnaFavorit, gayaPakaian, motifDisukai, favBahan 
+            warnaFavorit, gayaPakaian, motifDisukai, favBahan,
+            kategoriFavorit 
         } = req.body;
 
-        const rekomendasiUkuran = hitungRekomendasiUkuran(Number(tinggiBadan), Number(beratBadan));
+        // Hitung ulang detail fisik lengkap (Label, LD, PP) berdasarkan data terbaru
+        const detailFisik = hitungDetailFisik(tinggiBadan, beratBadan);
 
-        // Menggunakan findByIdAndUpdate dengan opsi { new: true } agar mengembalikan data terbaru
+        // Update data ke MongoDB dengan field LD dan PP yang baru
         const updatedUser = await User.findByIdAndUpdate(
             userId,
             {
-                nama, phone, province, city, address, location,
+                nama, 
+                phone, 
+                province, 
+                city, 
+                district, 
+                postalCode, 
+                address, 
+                location,
                 profiling: {
                     tinggiBadan: Number(tinggiBadan),
                     beratBadan: Number(beratBadan),
-                    rekomendasiUkuran: rekomendasiUkuran,
+                    rekomendasiUkuran: detailFisik.label, // Menyimpan Label (S/M/L/XL)
+                    estimasiLD: detailFisik.ld,           // Menyimpan angka LD permanen
+                    estimasiPP: detailFisik.pp,           // Menyimpan angka PP permanen
                     warnaFavorit: warnaFavorit || "",
                     favBahan: favBahan || "", 
                     gayaPakaian: gayaPakaian || "",
-                    motifDisukai: motifDisukai || ""
+                    motifDisukai: motifDisukai || "",
+                    kategoriFavorit: kategoriFavorit || "" 
                 }
             },
-            { new: true }
+            { new: true } // Mengembalikan dokumen yang sudah diupdate
         );
 
         if (!updatedUser) {
             return res.status(404).json({ message: "User tidak ditemukan" });
         }
 
-        // Response ini akan diterima React untuk mengupdate localStorage secara real-time
+        // Kirim balik data user terbaru agar Frontend bisa update localStorage tanpa kehilangan LD/PP
         res.status(200).json({
-            message: "Profiling Berhasil Diperbarui secara permanen",
+            message: "Profil & Data Rekomendasi Berhasil Diperbarui",
             user: updatedUser 
         });
     } catch (error) {
-        console.error("Error Backend:", error);
-        res.status(500).json({ message: "Gagal memperbarui profiling", error: error.message });
+        console.error("Error pada Backend Update Profiling:", error);
+        res.status(500).json({ 
+            message: "Gagal memperbarui data profiling", 
+            error: error.message 
+        });
     }
 };
 
-// 2. FUNGSI LOGIN (Sangat Penting: Mengambil data dari MongoDB saat user masuk kembali)
+/**
+ * 2. FUNGSI LOGIN
+ * Memastikan seluruh objek profiling (termasuk LD & PP) ikut terkirim
+ */
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
         
-        // Cari user di database
+        // Cari user berdasarkan email
         const user = await User.findOne({ email });
-        if (!user) return res.status(404).json({ message: "User tidak ditemukan" });
+        if (!user) return res.status(404).json({ message: "Email tidak terdaftar" });
 
-        // (Pastikan logika pengecekan password/bcrypt kamu di sini tetap ada)
-
-        /**
-         * KUNCI AGAR DATA TIDAK HILANG SAAT LOGOUT:
-         * Kita harus mengirimkan seluruh objek 'profiling' kembali ke React
-         * sehingga React bisa menyimpannya lagi di localStorage setelah login.
+        /** 
+         * NOTE: Tambahkan logika bcrypt.compare(password, user.password) di sini 
+         * sebelum proses login dinyatakan berhasil.
          */
-    res.status(200).json({
-            token: rahasia_banget_123,
+
+        // Jika password cocok, kirim response lengkap termasuk objek profiling terbaru
+        res.status(200).json({
+            message: "Login Berhasil",
+            token: "YOUR_JWT_TOKEN_HERE", 
             user: {
                 id: user._id,
                 nama: user.nama,
                 email: user.email,
                 phone: user.phone,
-                // Pastikan alamat dikirim lengkap
                 province: user.province,
                 city: user.city,
+                district: user.district,
+                postalCode: user.postalCode,
                 address: user.address,
                 location: user.location,
-                // Pastikan seluruh objek profiling dikirim
+                // Mengirimkan objek profiling lengkap agar LD/PP muncul saat user pindah halaman
                 profiling: user.profiling 
             }
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Error pada Backend Login:", error);
+        res.status(500).json({ message: "Internal Server Error" });
     }
 };

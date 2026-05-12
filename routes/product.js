@@ -18,10 +18,13 @@ router.post('/add', async (req, res) => {
       product: savedProduct 
     });
   } catch (error) {
-    console.error("Error saat menambah produk:", error.message);
-    res.status(500).json({ message: "Gagal menambah produk: " + error.message });
+    // SANGAT PENTING: Cek terminal backend kamu untuk melihat pesan error ini
+    console.error("DETEKSI ERROR BACKEND:", error.message);
+    res.status(400).json({ message: "Gagal menambah produk: " + error.message });
   }
 });
+
+// ... (Sisa kodenya tetap sama seperti sebelumnya)
 
 // --- AMBIL SEMUA PRODUK ---
 router.get('/', async (req, res) => {
@@ -44,13 +47,13 @@ router.get('/detail/:slug', async (req, res) => {
   }
 });
 
-// --- UPDATE PRODUK (TAMBAHKAN INI) ---
+// --- UPDATE PRODUK ---
 router.put('/update/:id', async (req, res) => {
   try {
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
-      { new: true }
+      { new: true, runValidators: true } // Menambahkan runValidators agar input baru divalidasi
     );
     if (!updatedProduct) return res.status(404).json({ message: "Produk tidak ditemukan" });
     res.json({ message: "Produk berhasil diperbarui", product: updatedProduct });

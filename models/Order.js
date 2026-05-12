@@ -1,15 +1,21 @@
 const mongoose = require('mongoose');
 
 const OrderSchema = new mongoose.Schema({
-  userId: { type: String, required: true }, 
+  userId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  }, 
   namaPelanggan: { type: String, required: true },
   items: [
     {
       productId: { type: String, required: true },
       nama: String,
       harga: Number,
-      jumlah: Number,
-      varian: String
+      // PERBAIKAN: Ubah 'jumlah' menjadi 'quantity' agar sinkron dengan Frontend
+      quantity: { type: Number, required: true },
+      varian: String,
+      image: String
     }
   ],
   totalHarga: { type: Number, required: true },
