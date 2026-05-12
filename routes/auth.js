@@ -17,6 +17,7 @@ const hitungDetailFisik = (tb, bb) => {
     return { label: "Input Tidak Valid", ld: 0, pp: 0 };
   }
 
+  // Logika rumus skripsi: Estimasi LD & PP
   let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 15);
   let estPP = Math.round(tinggi * 0.45);
 
@@ -52,7 +53,15 @@ router.post('/register', async (req, res) => {
         nama, 
         email, 
         password: hashedPassword,
-        role: 'user' 
+        role: 'user',
+        // Inisialisasi profiling kosong agar tidak error saat pertama kali login
+        profiling: {
+          tinggiBadan: 0,
+          beratBadan: 0,
+          rekomendasiUkuran: "Belum Diatur",
+          estimasiLD: 0,
+          estimasiPP: 0
+        }
     });
     
     await newUser.save();
@@ -62,7 +71,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// --- 2. LOGIN ---
+// --- 2. LOGIN (PERBAIKAN: Mengirim profiling lengkap) ---
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -88,7 +97,8 @@ router.post('/login', async (req, res) => {
         district: user.district || "",   
         postalCode: user.postalCode || "", 
         address: user.address || "", 
-        location: user.location,
+        location: user.location || {},
+        // PERBAIKAN: Mengirim objek profiling lengkap dari database agar LD/PP tetap tersimpan
         profiling: user.profiling || {} 
       }
     });
@@ -97,7 +107,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// --- 3. UPDATE PROFILE ---
+// --- 3. UPDATE PROFILE (PERBAIKAN: Sinkronisasi data ke Frontend) ---
 router.put('/update/:id', async (req, res) => {
   try {
     const { 
@@ -107,7 +117,7 @@ router.put('/update/:id', async (req, res) => {
 
     const finalNama = nama || name;
     
-    // Hitung detail fisik otomatis (Label, LD, PP)
+    // Hitung detail fisik otomatis (Label, LD, PP) sesuai rumus
     const detailFisik = hitungDetailFisik(tinggiBadan, beratBadan);
 
     const updatedUser = await User.findByIdAndUpdate(
@@ -117,16 +127,16 @@ router.put('/update/:id', async (req, res) => {
         phone, 
         province, 
         city, 
-        district,    
-        postalCode,  
+        district,     
+        postalCode,   
         address, 
         location,
         profiling: {
             tinggiBadan: Number(tinggiBadan) || 0,
             beratBadan: Number(beratBadan) || 0,
             rekomendasiUkuran: detailFisik.label,
-            estimasiLD: detailFisik.ld, // Menyimpan Estimasi LD secara permanen
-            estimasiPP: detailFisik.pp, // Menyimpan Estimasi PP secara permanen
+            estimasiLD: detailFisik.ld, 
+            estimasiPP: detailFisik.pp, 
             warnaFavorit: warnaFavorit || "",
             favBahan: favBahan || "",
             kategoriFavorit: kategoriFavorit || "",
@@ -139,6 +149,7 @@ router.put('/update/:id', async (req, res) => {
 
     if (!updatedUser) return res.status(404).json({ message: "User tidak ditemukan" });
 
+    // Kirim response lengkap agar Frontend bisa langsung update LocalStorage
     res.status(200).json({ 
         message: "Update Sukses", 
         user: {
@@ -146,14 +157,14 @@ router.put('/update/:id', async (req, res) => {
             nama: updatedUser.nama,
             email: updatedUser.email,
             role: updatedUser.role,
-            phone: updatedUser.phone,
-            province: updatedUser.province,
-            city: updatedUser.city,
-            district: updatedUser.district,   
-            postalCode: updatedUser.postalCode, 
-            address: updatedUser.address,
-            location: updatedUser.location,
-            profiling: updatedUser.profiling
+            phone: updatedUser.phone || "",
+            province: updatedUser.province || "",
+            city: updatedUser.city || "",
+            district: updatedUser.district || "",   
+            postalCode: updatedUser.postalCode || "", 
+            address: updatedUser.address || "",
+            location: updatedUser.location || {},
+            profiling: updatedUser.profiling // Mengirim hasil hitungan terbaru
         }
     });
   } catch (error) {
