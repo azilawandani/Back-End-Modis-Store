@@ -11,7 +11,12 @@ const productRoutes = require('./routes/product');
 const app = express();
 
 // --- 1. MIDDLEWARE ---
-app.use(cors()); // Mengizinkan koneksi antar frontend & backend
+// PERBAIKAN: Memperbaiki penulisan konfigurasi objek CORS dan menghapus tanda "/" di akhir URL
+app.use(cors({
+  origin: 'https://front-end-modis-store-a5yo.vercel.app', 
+  credentials: true
+}));
+
 app.use(express.json()); // Agar bisa membaca data JSON dari body request
 
 // --- 2. ROUTES ---
@@ -33,7 +38,7 @@ mongoose.connect(process.env.MONGO_URI)
     // Jalankan Server setelah database terkoneksi
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => {
-      console.log(`🚀 Server aktif di http://localhost:${PORT}`);
+      console.log(`🚀 Server aktif di port: ${PORT}`);
     });
   })
   .catch((err) => {
