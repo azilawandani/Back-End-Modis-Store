@@ -24,7 +24,6 @@ router.post('/add', async (req, res) => {
   }
 });
 
-// ... (Sisa kodenya tetap sama seperti sebelumnya)
 
 // --- AMBIL SEMUA PRODUK ---
 router.get('/', async (req, res) => {
