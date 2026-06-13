@@ -12,8 +12,8 @@ const jwt = require('jsonwebtoken');
 const estimasiFisikModisStore = (tinggi, berat) => {
   if (!tinggi || !berat) return { label: "All Size", ld: 0, pp: 0 };
 
-  // 1. Rumus Estimasi LD & PP bawaan kodinganmu
-  let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 15);
+  // PERBAIKAN: Konstanta diubah dari 15 menjadi 10 agar perhitungan LD seimbang dan tidak bias
+  let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 10);
   let estPP = Math.round(tinggi * 0.45);
 
   let label = "All Size";
@@ -114,7 +114,7 @@ router.put('/update/:id', async (req, res) => {
     const tbAngka = Number(tinggiBadan) || 0;
     const bbAngka = Number(beratBadan) || 0;
 
-    // PERBAIKAN: Memanggil nama fungsi helper yang benar
+    // Memanggil nama fungsi helper yang benar
     const detailFisik = estimasiFisikModisStore(tbAngka, bbAngka);
 
     const updatedUser = await User.findByIdAndUpdate(
