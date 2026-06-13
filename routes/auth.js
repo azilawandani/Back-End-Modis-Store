@@ -65,7 +65,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// --- 2. LOGIN (PERBAIKAN: Mengirim profiling lengkap) ---
+// --- 2. LOGIN ---
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -92,7 +92,6 @@ router.post('/login', async (req, res) => {
         postalCode: user.postalCode || "", 
         address: user.address || "", 
         location: user.location || {},
-        // PERBAIKAN: Mengirim objek profiling lengkap dari database agar LD/PP tetap tersimpan
         profiling: user.profiling || {} 
       }
     });
@@ -101,7 +100,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// --- 3. UPDATE PROFILE (PERBAIKAN: Sinkronisasi data ke Frontend) ---
+// --- 3. UPDATE PROFILE (SINKRON & FIXED) ---
 router.put('/update/:id', async (req, res) => {
   try {
     const { 
@@ -111,8 +110,12 @@ router.put('/update/:id', async (req, res) => {
 
     const finalNama = nama || name;
     
-    // Hitung detail fisik otomatis (Label, LD, PP) sesuai rumus
-    const detailFisik = hitungDetailFisik(tinggiBadan, beratBadan);
+    // Pastikan input dikonversi menjadi angka murni sebelum dilempar ke rumus
+    const tbAngka = Number(tinggiBadan) || 0;
+    const bbAngka = Number(beratBadan) || 0;
+
+    // PERBAIKAN: Memanggil nama fungsi helper yang benar
+    const detailFisik = estimasiFisikModisStore(tbAngka, bbAngka);
 
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
@@ -126,8 +129,8 @@ router.put('/update/:id', async (req, res) => {
         address, 
         location,
         profiling: {
-            tinggiBadan: Number(tinggiBadan) || 0,
-            beratBadan: Number(beratBadan) || 0,
+            tinggiBadan: tbAngka,
+            beratBadan: bbAngka,
             rekomendasiUkuran: detailFisik.label,
             estimasiLD: detailFisik.ld, 
             estimasiPP: detailFisik.pp, 
@@ -143,7 +146,6 @@ router.put('/update/:id', async (req, res) => {
 
     if (!updatedUser) return res.status(404).json({ message: "User tidak ditemukan" });
 
-    // Kirim response lengkap agar Frontend bisa langsung update LocalStorage
     res.status(200).json({ 
         message: "Update Sukses", 
         user: {
@@ -158,7 +160,7 @@ router.put('/update/:id', async (req, res) => {
             postalCode: updatedUser.postalCode || "", 
             address: updatedUser.address || "",
             location: updatedUser.location || {},
-            profiling: updatedUser.profiling // Mengirim hasil hitungan terbaru
+            profiling: updatedUser.profiling 
         }
     });
   } catch (error) {

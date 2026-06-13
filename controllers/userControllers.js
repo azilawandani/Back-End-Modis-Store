@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 /**
  * FUNGSI HELPER: LOGIKA REKOMENDASI UKURAN & DETAIL FISIK
@@ -6,9 +8,12 @@ const User = require('../models/User');
  * Menghasilkan Label Ukuran, Estimasi LD, dan Estimasi PP
  */
 const hitungDetailFisik = (tinggi, berat) => {
-  if (!tinggi || !berat) return { label: "All Size", ld: 0, pp: 0 };
+  // Amankan input: jika bernilai 0, null, atau NaN, langsung return default
+  if (!tinggi || !berat || isNaN(tinggi) || isNaN(berat)) {
+    return { label: "Belum Diatur", ld: 0, pp: 0 };
+  }
 
-  // 1. Rumus Estimasi LD & PP bawaan kodinganmu
+  // 1. Rumus Estimasi LD & PP sesuai kodingan Modis Store
   let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 15);
   let estPP = Math.round(tinggi * 0.45);
 
@@ -34,8 +39,12 @@ const hitungDetailFisik = (tinggi, berat) => {
  */
 exports.updateProfiling = async (req, res) => {
     try {
-        // Mengambil ID dari params atau dari middleware auth
-        const userId = req.params.id || req.user.id; 
+        // Mengambil ID dari params atau dari middleware auth token
+        const userId = req.params.id || (req.user ? req.user.id : null); 
+        
+        if (!userId) {
+            return res.status(400).json({ message: "ID Pengguna tidak valid atau tidak ditemukan" });
+        }
         
         const { 
             nama, phone, province, city, district, postalCode, address, location,
@@ -44,8 +53,12 @@ exports.updateProfiling = async (req, res) => {
             kategoriFavorit 
         } = req.body;
 
-        // Hitung ulang detail fisik lengkap (Label, LD, PP) berdasarkan data terbaru
-        const detailFisik = hitungDetailFisik(tinggiBadan, beratBadan);
+        // Sanitasi data: Pastikan dikonversi ke angka murni. Jika kosong/invalid, default ke 0
+        const tbAngka = Number(tinggiBadan) || 0;
+        const bbAngka = Number(beratBadan) || 0;
+
+        // Hitung ulang detail fisik lengkap (Label, LD, PP) berdasarkan angka sanitasi
+        const detailFisik = hitungDetailFisik(tbAngka, bbAngka);
 
         // Update data ke MongoDB dengan field LD dan PP yang baru
         const updatedUser = await User.findByIdAndUpdate(
@@ -60,8 +73,8 @@ exports.updateProfiling = async (req, res) => {
                 address, 
                 location,
                 profiling: {
-                    tinggiBadan: Number(tinggiBadan),
-                    beratBadan: Number(beratBadan),
+                    tinggiBadan: tbAngka,
+                    beratBadan: bbAngka,
                     rekomendasiUkuran: detailFisik.label, // Menyimpan Label (S/M/L/XL)
                     estimasiLD: detailFisik.ld,           // Menyimpan angka LD permanen
                     estimasiPP: detailFisik.pp,           // Menyimpan angka PP permanen
@@ -73,7 +86,7 @@ exports.updateProfiling = async (req, res) => {
                 }
             },
             { new: true } // Mengembalikan dokumen yang sudah diupdate
-        );
+        ).select('-password'); // Amankan password agar tidak ikut terkirim ke frontend
 
         if (!updatedUser) {
             return res.status(404).json({ message: "User tidak ditemukan" });
@@ -94,43 +107,53 @@ exports.updateProfiling = async (req, res) => {
 };
 
 /**
- * 2. FUNGSI LOGIN
- * Memastikan seluruh objek profiling (termasuk LD & PP) ikut terkirim
+ * 2. FUNGSI LOGIN (FIXED & SECURE)
+ * Memastikan verifikasi password berjalan nyata dan mengirim data profiling lengkap
  */
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
         
-        // Cari user berdasarkan email
+        // 1. Cari user berdasarkan email
         const user = await User.findOne({ email });
         if (!user) return res.status(404).json({ message: "Email tidak terdaftar" });
 
-        /** 
-         * NOTE: Tambahkan logika bcrypt.compare(password, user.password) di sini 
-         * sebelum proses login dinyatakan berhasil.
-         */
+        // 2. Verifikasi Password menggunakan bcrypt secara nyata
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ message: "Password yang Anda masukkan salah!" });
 
-        // Jika password cocok, kirim response lengkap termasuk objek profiling terbaru
+        // 3. Generate JWT Token resmi berdasarkan ID User
+        const tokenSecret = process.env.JWT_SECRET || 'secretkeymodis';
+        const token = jwt.sign({ id: user._id }, tokenSecret, { expiresIn: '1d' });
+
+        // 4. Kirim response sukses lengkap ke frontend
         res.status(200).json({
             message: "Login Berhasil",
-            token: "YOUR_JWT_TOKEN_HERE", 
+            token, 
             user: {
                 id: user._id,
                 nama: user.nama,
                 email: user.email,
-                phone: user.phone,
-                province: user.province,
-                city: user.city,
-                district: user.district,
-                postalCode: user.postalCode,
-                address: user.address,
-                location: user.location,
-                // Mengirimkan objek profiling lengkap agar LD/PP muncul saat user pindah halaman
-                profiling: user.profiling 
+                role: user.role || "user",
+                phone: user.phone || "",
+                province: user.province || "",
+                city: user.city || "",
+                district: user.district || "",
+                postalCode: user.postalCode || "",
+                address: user.address || "",
+                location: user.location || {},
+                // Mengirimkan objek profiling lengkap agar LD/PP muncul di Profile.jsx
+                profiling: user.profiling || {
+                    tinggiBadan: 0,
+                    beratBadan: 0,
+                    rekomendasiUkuran: "Belum Diatur",
+                    estimasiLD: 0,
+                    estimasiPP: 0
+                }
             }
         });
     } catch (error) {
         console.error("Error pada Backend Login:", error);
-        res.status(500).json({ message: "Internal Server Error" });
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
