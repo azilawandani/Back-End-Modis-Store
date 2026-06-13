@@ -9,30 +9,24 @@ const jwt = require('jsonwebtoken');
  * Logika ini sinkron dengan yang ada di Frontend (Profile.jsx)
  * Menghasilkan Label Ukuran, Estimasi LD, dan Estimasi PP
  */
-const hitungDetailFisik = (tb, bb) => {
-  const tinggi = Number(tb);
-  const berat = Number(bb);
+const estimasiFisikModisStore = (tinggi, berat) => {
+  if (!tinggi || !berat) return { label: "All Size", ld: 0, pp: 0 };
 
-  if (!tinggi || !berat || tinggi <= 0 || berat <= 0) {
-    return { label: "Input Tidak Valid", ld: 0, pp: 0 };
-  }
-
-  // Logika rumus skripsi: Estimasi LD & PP
+  // 1. Rumus Estimasi LD & PP bawaan kodinganmu
   let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 15);
   let estPP = Math.round(tinggi * 0.45);
 
-  let label = "M";
-  
-  if (berat >= 45 && berat < 55) {
+  let label = "All Size";
+
+  // 2. Logika Penentuan Label Ukuran (Menggunakan Rentang Gabungan yang Logis)
+  if (berat < 50 && tinggi < 155) {
+    label = "S";
+  } else if (berat >= 50 && berat < 60 && tinggi >= 155 && tinggi < 165) {
     label = "M";
-  } else if (berat >= 55 && berat < 65) {
+  } else if (berat >= 60 && berat < 75 && tinggi >= 165 && tinggi < 175) {
     label = "L";
-  } else if (berat >= 65 && berat <= 80) {
+  } else if (berat >= 75 || tinggi >= 175) {
     label = "XL";
-  } else if (berat > 80) {
-    label = "XL";
-  } else {
-    label = "M";
   }
   
   return { label, ld: estLD, pp: estPP };
