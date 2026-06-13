@@ -91,6 +91,12 @@ exports.updateProfiling = async (req, res) => {
             return res.status(404).json({ message: "User tidak ditemukan" });
         }
 
+        // --- PENGAMAN TAMBAHAN FRONTLINE ---
+        // Jika dokumen user membawa properti similarityScore bawaan database, kita kunci maks 1.0 (100%)
+        if (updatedUser.similarityScore && updatedUser.similarityScore > 1.0) {
+            updatedUser.similarityScore = 1.0;
+        }
+
         res.status(200).json({
             message: "Profil & Data Rekomendasi Berhasil Diperbarui",
             user: updatedUser 
@@ -120,6 +126,15 @@ exports.login = async (req, res) => {
         const tokenSecret = process.env.JWT_SECRET || 'secretkeymodis';
         const token = jwt.sign({ id: user._id }, tokenSecret, { expiresIn: '1d' });
 
+        // Ambil objek profiling murni dari database
+        const profileData = user.profiling || {};
+
+        // --- PENGAMAN TAMBAHAN FRONTLINE ---
+        // Jika user membawa data similarityScore lama dari sesi sebelumnya, kita bersihkan agar mentok 1.0
+        if (user.similarityScore && user.similarityScore > 1.0) {
+            user.similarityScore = 1.0;
+        }
+
         res.status(200).json({
             message: "Login Berhasil",
             token, 
@@ -135,12 +150,17 @@ exports.login = async (req, res) => {
                 postalCode: user.postalCode || "",
                 address: user.address || "",
                 location: user.location || {},
-                profiling: user.profiling || {
-                    tinggiBadan: 0,
-                    beratBadan: 0,
-                    rekomendasiUkuran: "Belum Diatur",
-                    estimasiLD: 0,
-                    estimasiPP: 0
+                profiling: {
+                    tinggiBadan: profileData.tinggiBadan || 0,
+                    beratBadan: profileData.beratBadan || 0,
+                    rekomendasiUkuran: profileData.rekomendasiUkuran || "Belum Diatur",
+                    estimasiLD: profileData.estimasiLD || 0,
+                    estimasiPP: profileData.estimasiPP || 0,
+                    warnaFavorit: profileData.warnaFavorit || "",
+                    favBahan: profileData.favBahan || "",
+                    gayaPakaian: profileData.gayaPakaian || "",
+                    motifDisukai: profileData.motifDisukai || "",
+                    kategoriFavorit: profileData.kategoriFavorit || ""
                 }
             }
         });
