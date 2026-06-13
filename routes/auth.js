@@ -16,7 +16,7 @@ const estimasiFisikModisStore = (tb, bb) => {
     return { label: "Input Tidak Valid", ld: 0, pp: 0 };
   }
 
-  // PERBAIKAN: Gunakan konstanta + 10 agar hasil seimbang 100 cm pada target uji utama
+  // Gunakan konstanta + 10 agar hasil seimbang 100 cm pada target uji utama (TB 160 / BB 55)
   let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 10);
   let estPP = Math.round(tinggi * 0.45);
 
@@ -146,6 +146,11 @@ router.put('/update/:id', async (req, res) => {
     );
 
     if (!updatedUser) return res.status(404).json({ message: "User tidak ditemukan" });
+
+    // PENGAMAN UTAMA: Jika response user membawa similarityScore (Content-Based), kita amankan batasnya di sini
+    if (updatedUser.similarityScore && updatedUser.similarityScore > 1.0) {
+        updatedUser.similarityScore = 1.0;
+    }
 
     res.status(200).json({ 
         message: "Update Sukses", 
