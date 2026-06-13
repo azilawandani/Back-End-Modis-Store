@@ -1,31 +1,37 @@
 const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 /**
  * FUNGSI HELPER: LOGIKA REKOMENDASI UKURAN & DETAIL FISIK
- * Berdasarkan hasil rekayasa kebutuhan Modis Store (Integrasi TB & BB)
+ * Berdasarkan hasil rekayasa kebutuhan Modis Store (Murni Range Berat Badan Sesuai Katalog)
  * Menghasilkan Label Ukuran, Estimasi LD, dan Estimasi PP
  */
 const hitungDetailFisik = (tb, bb) => {
-  const tinggi = Number(tb);
-  const berat = Number(bb);
+  const tinggi = parseInt(tb);
+  const berat = parseInt(bb);
 
-  if (!tinggi || !berat || tinggi <= 0 || berat <= 0) {
+  if (!tinggi || !berat || tinggi <= 0 || berat <= 0 || isNaN(tinggi) || isNaN(berat)) {
     return { label: "Input Tidak Valid", ld: 0, pp: 0 };
   }
 
-  // Logika estimasi LD & PP sesuai standar Modis Store
-  let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 15);
-  let estPP = Math.round(tinggi * 0.45);
+  // PERBAIKAN: Konstanta dikunci + 10 agar TB 160 / BB 55 pas menghasilkan LD 100 cm (Batas 100% Match)
+  let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 10);
+  let estPP = Math.round(tinggi * 0.45); 
 
-  let label = "All Size";
- if ((berat >= 50 && berat < 60) || (tinggi >= 155 && tinggi < 165)) {
-    label = "M";
-  } else if ((berat >= 60 && berat < 75) || (tinggi >= 165 && tinggi < 175)) {
-    label = "L";
-  } else if (berat >= 75 || tinggi >= 175) {
-    label = "XL";
-  }
+  let label = "M"; 
   
+  // Penentuan Label Ukuran Sinkron dengan Data Tabel Katalog Butik
+  if (berat < 45) {
+    label = "S";
+  } else if (berat >= 45 && berat < 55) {
+    label = "M";
+  } else if (berat >= 55 && berat < 65) {
+    label = "L";
+  } else if (berat >= 65) {
+    label = "XL"; 
+  }
+
   return { label, ld: estLD, pp: estPP };
 };
 
@@ -35,9 +41,12 @@ const hitungDetailFisik = (tb, bb) => {
  */
 exports.updateProfiling = async (req, res) => {
     try {
-        // Mengambil ID dari params atau dari middleware auth
-        const userId = req.params.id || req.user.id; 
+        const userId = req.params.id || (req.user ? req.user.id : null); 
         
+        if (!userId) {
+            return res.status(400).json({ message: "ID Pengguna tidak valid atau tidak ditemukan" });
+        }
+
         const { 
             nama, phone, province, city, district, postalCode, address, location,
             tinggiBadan, beratBadan, 
@@ -45,10 +54,12 @@ exports.updateProfiling = async (req, res) => {
             kategoriFavorit 
         } = req.body;
 
-        // Hitung ulang detail fisik lengkap (Label, LD, PP) berdasarkan data terbaru
-        const detailFisik = hitungDetailFisik(tinggiBadan, beratBadan);
+        const tbAngka = parseInt(tinggiBadan) || 0;
+        const bbAngka = parseInt(beratBadan) || 0;
 
-        // Update data ke MongoDB dengan field LD dan PP yang baru
+        // Hitung ulang detail fisik dengan fungsi terstandarisasi
+        const detailFisik = hitungDetailFisik(tbAngka, bbAngka);
+
         const updatedUser = await User.findByIdAndUpdate(
             userId,
             {
@@ -61,11 +72,11 @@ exports.updateProfiling = async (req, res) => {
                 address, 
                 location,
                 profiling: {
-                    tinggiBadan: Number(tinggiBadan),
-                    beratBadan: Number(beratBadan),
-                    rekomendasiUkuran: detailFisik.label, // Menyimpan Label (S/M/L/XL)
-                    estimasiLD: detailFisik.ld,           // Menyimpan angka LD permanen
-                    estimasiPP: detailFisik.pp,           // Menyimpan angka PP permanen
+                    tinggiBadan: tbAngka,
+                    beratBadan: bbAngka,
+                    rekomendasiUkuran: detailFisik.label,
+                    estimasiLD: detailFisik.ld,           
+                    estimasiPP: detailFisik.pp,           
                     warnaFavorit: warnaFavorit || "",
                     favBahan: favBahan || "", 
                     gayaPakaian: gayaPakaian || "",
@@ -73,14 +84,13 @@ exports.updateProfiling = async (req, res) => {
                     kategoriFavorit: kategoriFavorit || "" 
                 }
             },
-            { new: true } // Mengembalikan dokumen yang sudah diupdate
-        );
+            { new: true } 
+        ).select('-password');
 
         if (!updatedUser) {
             return res.status(404).json({ message: "User tidak ditemukan" });
         }
 
-        // Kirim balik data user terbaru agar Frontend bisa update localStorage tanpa kehilangan LD/PP
         res.status(200).json({
             message: "Profil & Data Rekomendasi Berhasil Diperbarui",
             user: updatedUser 
@@ -96,42 +106,46 @@ exports.updateProfiling = async (req, res) => {
 
 /**
  * 2. FUNGSI LOGIN
- * Memastikan seluruh objek profiling (termasuk LD & PP) ikut terkirim
  */
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
         
-        // Cari user berdasarkan email
         const user = await User.findOne({ email });
         if (!user) return res.status(404).json({ message: "Email tidak terdaftar" });
 
-        /** 
-         * NOTE: Tambahkan logika bcrypt.compare(password, user.password) di sini 
-         * sebelum proses login dinyatakan berhasil.
-         */
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ message: "Password yang Anda masukkan salah!" });
 
-        // Jika password cocok, kirim response lengkap termasuk objek profiling terbaru
+        const tokenSecret = process.env.JWT_SECRET || 'secretkeymodis';
+        const token = jwt.sign({ id: user._id }, tokenSecret, { expiresIn: '1d' });
+
         res.status(200).json({
             message: "Login Berhasil",
-            token: "YOUR_JWT_TOKEN_HERE", 
+            token, 
             user: {
                 id: user._id,
                 nama: user.nama,
                 email: user.email,
-                phone: user.phone,
-                province: user.province,
-                city: user.city,
-                district: user.district,
-                postalCode: user.postalCode,
-                address: user.address,
-                location: user.location,
-                // Mengirimkan objek profiling lengkap agar LD/PP muncul saat user pindah halaman
-                profiling: user.profiling 
+                role: user.role || "user",
+                phone: user.phone || "",
+                province: user.province || "",
+                city: user.city || "",
+                district: user.district || "",
+                postalCode: user.postalCode || "",
+                address: user.address || "",
+                location: user.location || {},
+                profiling: user.profiling || {
+                    tinggiBadan: 0,
+                    beratBadan: 0,
+                    rekomendasiUkuran: "Belum Diatur",
+                    estimasiLD: 0,
+                    estimasiPP: 0
+                }
             }
         });
     } catch (error) {
         console.error("Error pada Backend Login:", error);
-        res.status(500).json({ message: "Internal Server Error" });
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };

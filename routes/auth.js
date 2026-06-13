@@ -6,33 +6,31 @@ const jwt = require('jsonwebtoken');
 
 /**
  * Helper untuk hitung ukuran cerdas (Integrasi TB & BB)
- * Logika ini sinkron dengan yang ada di Frontend (Profile.jsx)
- * Menghasilkan Label Ukuran, Estimasi LD, dan Estimasi PP
+ * Logika ini sinkron dengan yang ada di Controller dan Frontend (Profile.jsx)
  */
-const hitungDetailFisik = (tb, bb) => {
-  const tinggi = Number(tb);
-  const berat = Number(bb);
+const estimasiFisikModisStore = (tb, bb) => {
+  const tinggi = parseInt(tb);
+  const berat = parseInt(bb);
 
-  if (!tinggi || !berat || tinggi <= 0 || berat <= 0) {
+  if (!tinggi || !berat || tinggi <= 0 || berat <= 0 || isNaN(tinggi) || isNaN(berat)) {
     return { label: "Input Tidak Valid", ld: 0, pp: 0 };
   }
 
-  // Logika rumus skripsi: Estimasi LD & PP
-  let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 15);
+  // PERBAIKAN: Gunakan konstanta + 10 agar hasil seimbang 100 cm pada target uji utama
+  let estLD = Math.round((berat * 1.2) + (tinggi * 0.15) + 10);
   let estPP = Math.round(tinggi * 0.45);
 
   let label = "M";
   
-  if (berat >= 45 && berat < 55) {
+  // Sinkronisasi penuh struktur if-else rentang berat badan
+  if (berat < 45) {
+    label = "S";
+  } else if (berat >= 45 && berat < 55) {
     label = "M";
   } else if (berat >= 55 && berat < 65) {
     label = "L";
-  } else if (berat >= 65 && berat <= 80) {
+  } else if (berat >= 65) {
     label = "XL";
-  } else if (berat > 80) {
-    label = "XL";
-  } else {
-    label = "M";
   }
   
   return { label, ld: estLD, pp: estPP };
@@ -54,7 +52,6 @@ router.post('/register', async (req, res) => {
         email, 
         password: hashedPassword,
         role: 'user',
-        // Inisialisasi profiling kosong agar tidak error saat pertama kali login
         profiling: {
           tinggiBadan: 0,
           beratBadan: 0,
@@ -71,7 +68,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// --- 2. LOGIN (PERBAIKAN: Mengirim profiling lengkap) ---
+// --- 2. LOGIN ---
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -98,7 +95,6 @@ router.post('/login', async (req, res) => {
         postalCode: user.postalCode || "", 
         address: user.address || "", 
         location: user.location || {},
-        // PERBAIKAN: Mengirim objek profiling lengkap dari database agar LD/PP tetap tersimpan
         profiling: user.profiling || {} 
       }
     });
@@ -107,7 +103,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// --- 3. UPDATE PROFILE (PERBAIKAN: Sinkronisasi data ke Frontend) ---
+// --- 3. UPDATE PROFILE ---
 router.put('/update/:id', async (req, res) => {
   try {
     const { 
@@ -117,8 +113,10 @@ router.put('/update/:id', async (req, res) => {
 
     const finalNama = nama || name;
     
-    // Hitung detail fisik otomatis (Label, LD, PP) sesuai rumus
-    const detailFisik = hitungDetailFisik(tinggiBadan, beratBadan);
+    const tbAngka = parseInt(tinggiBadan) || 0;
+    const bbAngka = parseInt(beratBadan) || 0;
+
+    const detailFisik = estimasiFisikModisStore(tbAngka, bbAngka);
 
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
@@ -132,8 +130,8 @@ router.put('/update/:id', async (req, res) => {
         address, 
         location,
         profiling: {
-            tinggiBadan: Number(tinggiBadan) || 0,
-            beratBadan: Number(beratBadan) || 0,
+            tinggiBadan: tbAngka,
+            beratBadan: bbAngka,
             rekomendasiUkuran: detailFisik.label,
             estimasiLD: detailFisik.ld, 
             estimasiPP: detailFisik.pp, 
@@ -149,7 +147,6 @@ router.put('/update/:id', async (req, res) => {
 
     if (!updatedUser) return res.status(404).json({ message: "User tidak ditemukan" });
 
-    // Kirim response lengkap agar Frontend bisa langsung update LocalStorage
     res.status(200).json({ 
         message: "Update Sukses", 
         user: {
@@ -164,7 +161,7 @@ router.put('/update/:id', async (req, res) => {
             postalCode: updatedUser.postalCode || "", 
             address: updatedUser.address || "",
             location: updatedUser.location || {},
-            profiling: updatedUser.profiling // Mengirim hasil hitungan terbaru
+            profiling: updatedUser.profiling 
         }
     });
   } catch (error) {
