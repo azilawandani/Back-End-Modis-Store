@@ -9,7 +9,7 @@ const jwt = require('jsonwebtoken');
  * Logika ini sinkron dengan yang ada di Frontend (Profile.jsx)
  * Menghasilkan Label Ukuran, Estimasi LD, dan Estimasi PP
  */
-const estimasiFisikModisStore = (tinggi, berat) => {
+const hitungDetailFisik = (tinggi, berat) => {
   if (!tinggi || !berat) return { label: "All Size", ld: 0, pp: 0 };
 
   // PERBAIKAN: Konstanta diubah dari 15 menjadi 10 agar perhitungan LD seimbang dan tidak bias
